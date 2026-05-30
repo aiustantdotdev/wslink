@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Wslink;
@@ -62,14 +63,32 @@ internal static class Elevation
         }
     }
 
-    public static void WarnIfNotElevated()
+    public static int RelaunchAsAdmin(string[] args)
     {
-        if (!IsElevated)
+        var exePath = Environment.ProcessPath;
+        if (exePath is null)
         {
-            Console.Error.WriteLine("Warning: Not running as Administrator.");
-            Console.Error.WriteLine("Portproxy and firewall changes require elevation.");
-            Console.Error.WriteLine("Restart as Administrator for full functionality.");
-            Console.Error.WriteLine();
+            Console.Error.WriteLine("Cannot determine executable path.");
+            return 1;
+        }
+
+        var psi = new ProcessStartInfo(exePath, string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a)))
+        {
+            Verb = "runas",
+            UseShellExecute = true,
+        };
+
+        try
+        {
+            using var proc = Process.Start(psi);
+            proc?.WaitForExit();
+            return proc?.ExitCode ?? 0;
+        }
+        catch
+        {
+            Console.Error.WriteLine("Elevation cancelled or failed.");
+            Console.Error.WriteLine("Run the command from an Administrator terminal instead.");
+            return 1;
         }
     }
 }

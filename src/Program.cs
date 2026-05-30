@@ -10,10 +10,10 @@ public sealed class Program
             return 0;
         }
 
-        if (args[0] is "forward" or "remove")
-            Elevation.WarnIfNotElevated();
-        if (args[0] == "service" && args.Length > 1 && args[1] != "status")
-            Elevation.WarnIfNotElevated();
+        if (NeedsElevation(args) && !Elevation.IsElevated)
+        {
+            return Elevation.RelaunchAsAdmin(args);
+        }
 
         return args[0] switch
         {
@@ -46,5 +46,13 @@ public sealed class Program
               wslink remove 4444
             """);
         return exitCode;
+    }
+
+    private static bool NeedsElevation(string[] args)
+    {
+        if (args[0] is "forward" or "remove") return true;
+        if (args[0] == "service" && args.Length > 1 && args[1] != "status") return true;
+        if (args[0] == "install") return true;
+        return false;
     }
 }

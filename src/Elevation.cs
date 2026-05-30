@@ -19,11 +19,6 @@ internal static class Elevation
 
     private const uint TokenQuery = 0x0008;
     private const uint TokenElevationType = 18;
-    private const uint TokenElevation = 20;
-    private const uint TokenLinked = 19;
-
-    private const uint HandleFlagsInherit = 1;
-    private const uint HandleFlagsProtectFromClose = 2;
 
     public static bool IsElevated
     {
@@ -38,12 +33,12 @@ internal static class Elevation
                 try
                 {
                     var elevationType = 0u;
-                    var size = sizeof(uint);
-                    var buf = Marshal.AllocHGlobal((int)size);
+                    var size = (int)sizeof(uint);
+                    var buf = Marshal.AllocHGlobal(size);
                     try
                     {
                         if (!GetTokenInformation(token, TokenElevationType,
-                            buf, size, out _))
+                            buf, (uint)size, out _))
                             return false;
 
                         elevationType = (uint)Marshal.ReadInt32(buf);

@@ -1,6 +1,6 @@
 # wslink
 
-**Windows ↔ WSL port bridge.** Zero-config, single-file executable. No dependencies. No installation.
+**Windows Subsystem Link port bridge.** Zero-config, single-file executable. No dependencies. No installation.
 
 ## Problem
 

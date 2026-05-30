@@ -20,6 +20,7 @@ public sealed class Program
             "forward" => Commands.Forward(args[1..]),
             "remove" => Commands.Remove(args[1..]),
             "list" => Commands.List(),
+            "install" => Commands.Install(),
             "service" => Commands.Service(args[1..]),
             _ => PrintUsage(1),
         };
@@ -34,10 +35,12 @@ public sealed class Program
               wslink forward <port> [--distro <name>]    Forward WSL port to Windows
               wslink remove <port>                        Remove forwarding rule
               wslink list                                 List active rules
+              wslink install                              Install wslink globally
               wslink service install                      Install as background service
               wslink service remove                       Remove background service
 
             Examples:
+              wslink install
               wslink forward 4444
               wslink forward 4444 --distro Ubuntu
               wslink remove 4444

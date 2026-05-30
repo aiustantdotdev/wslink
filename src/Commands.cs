@@ -119,4 +119,63 @@ internal static class Commands
             _ => ServiceHelper.Status(),
         };
     }
+
+    public static int Install()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var installDir = Path.Combine(localAppData, "wslink");
+        var targetPath = Path.Combine(installDir, "wslink.exe");
+
+        Directory.CreateDirectory(installDir);
+
+        var sourcePath = Environment.ProcessPath;
+        if (sourcePath is null)
+        {
+            Console.Error.WriteLine("Could not determine executable path.");
+            return 1;
+        }
+
+        try
+        {
+            File.Copy(sourcePath, targetPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to copy to {targetPath}: {ex.Message}");
+            return 1;
+        }
+
+        // Add to user PATH via registry
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                "Environment", writable: true);
+            if (key is null)
+            {
+                Console.Error.WriteLine("Could not open HKCU\\Environment registry key.");
+                return 1;
+            }
+
+            var currentPath = (string?)key.GetValue("Path", "",
+                Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) ?? "";
+            var entries = currentPath.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (!entries.Contains(installDir, StringComparer.OrdinalIgnoreCase))
+            {
+                var newPath = string.Join(";",
+                    entries.Append(installDir));
+                key.SetValue("Path", newPath, Microsoft.Win32.RegistryValueKind.ExpandString);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to update PATH: {ex.Message}");
+            return 1;
+        }
+
+        Console.WriteLine($"Installed to {targetPath}");
+        Console.WriteLine("Added to user PATH. Restart your terminal to use 'wslink' from anywhere.");
+
+        return 0;
+    }
 }

@@ -1,9 +1,17 @@
 param(
-    [string]$Version = "v0.1.1"
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
 $Repo = "memlinkdotdev/wslink"
+
+if (-not $Version) {
+    Write-Host "Detecting latest release..." -ForegroundColor Gray
+    $api = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -UseBasicParsing
+    $Version = $api.tag_name
+    Write-Host "  Latest: $Version" -ForegroundColor Gray
+}
+
 $DestDir = "$env:LOCALAPPDATA\wslink"
 $ExePath = "$DestDir\wslink.exe"
 

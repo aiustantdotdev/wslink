@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+*.suo
+*.cache
+.DS_Store
+*.exe
+*.pdb
+*.manifest

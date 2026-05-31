@@ -16,6 +16,14 @@ WSL2 has its own virtual network. Services running on `localhost` inside WSL are
 4. Adds Windows Firewall rules (optional)
 5. Cleans up everything on exit
 
+## Installation
+
+Install `wslink` with a single command in **PowerShell (Windows)**:
+
+```powershell
+irm https://raw.githubusercontent.com/memlinkdotdev/wslink/main/install.ps1 | iex
+```
+
 ## Usage
 
 ```cmd
@@ -40,18 +48,24 @@ wslink service remove
 
 ## Requirements
 
-| Requirement | Details |
-|-------------|---------|
-| OS | Windows 10/11 with WSL2 |
-| Runtime | Self-contained. No runtime needed. |
-| Elevation | Admin rights for `netsh` + firewall (prompts UAC) |
+| Requirement | Details                                           |
+| ----------- | ------------------------------------------------- |
+| OS          | Windows 10/11 with WSL2                           |
+| Runtime     | Self-contained. No runtime needed.                |
+| Elevation   | Admin rights for `netsh` + firewall (prompts UAC) |
 
 ## Integration
 
-```bash
-# memlink serve auto-detects WSL and calls wslink
-memlink serve  # → wslink forward 4444
-```
+If you use `memlink` (Universal Memory for AI Agents), you can use `wslink` alongside it to allow your Windows host agents to connect to the memory server running inside WSL:
+
+1. Start your `memlink` server inside WSL:
+   ```bash
+   memlink serve --daemon
+   ```
+2. Bridge the port to Windows using `wslink` in Windows PowerShell:
+   ```powershell
+   wslink forward 4444
+   ```
 
 ## Architecture
 

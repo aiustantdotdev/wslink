@@ -82,24 +82,6 @@ Examples:
 	startProxy(listenAddr, port, target)
 }
 
-	portStr := flag.Arg(0)
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		log.Fatalf("Invalid port: %s", portStr)
-	}
-
-	var target string
-	if connect != "" {
-		target = connect
-	} else {
-		target = resolveTarget(port, wslName, windowsHost)
-	}
-
-	log.Printf("Forwarding %s:%d → %s", listenAddr, port, target)
-
-	startProxy(listenAddr, port, target)
-}
-
 func resolveTarget(port int, wslName, windowsHost string) string {
 	if runtime.GOOS == "windows" {
 		return resolveWslTarget(port, wslName)

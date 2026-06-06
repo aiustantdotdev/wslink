@@ -30,17 +30,17 @@ Direct TCP proxy — no `netsh`, no `iptables`, no admin, no leftover state. Pre
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/memlinkdotdev/wslink/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/aiustantdotdev/wslink/main/install.ps1 | iex
 ```
 
 **Linux / macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/memlinkdotdev/wslink/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aiustantdotdev/wslink/main/install.sh | bash
 ```
 
 ### Manual
 
-Grab a binary from the [latest release](https://github.com/memlinkdotdev/wslink/releases):
+Grab a binary from the [latest release](https://github.com/aiustantdotdev/wslink/releases):
 
 | OS      | Arch    | Binary                                |
 | ------- | ------- | ------------------------------------- |

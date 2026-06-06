@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # wslink installer (Linux/macOS)
-# curl -fsSL https://raw.githubusercontent.com/memlinkdotdev/wslink/main/install.sh | bash
+# curl -fsSL https://raw.githubusercontent.com/aiustantdotdev/wslink/main/install.sh | bash
 
 set -e
 
-REPO="memlinkdotdev/wslink"
+REPO="aiustantdotdev/wslink"
 INSTALL_DIR="${WSLINK_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_NAME="wslink"
 

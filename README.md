@@ -1,81 +1,112 @@
 # wslink
 
-**Windows Subsystem Link port bridge.** Zero-config, single-file executable. No dependencies. No installation.
+**Single-binary TCP bridge between Windows and WSL.** Zero-config, no dependencies, no installation. Statically linked Go binary.
 
 ## Problem
 
-WSL2 has its own virtual network. Services running on `localhost` inside WSL are not accessible from Windows apps. You need `netsh interface portproxy` + admin privileges + WSL IP detection. Every reboot changes the IP. It's manual and fragile.
+WSL2 has its own virtual network. TCP services on `localhost` inside WSL are not always reachable from Windows (and vice versa) — depends on WSL version, distro state, and corporate proxies. The Windows tooling (`netsh interface portproxy`, `wsl --list`) requires admin, gets out of sync, and breaks on reboot.
 
 ## Solution
 
-`wslink.exe` is a native Windows (C#) executable that:
+`wslink` is a single Go binary that runs on **either side** and proxies TCP traffic:
 
-1. Detects running WSL distros
-2. Gets their IP addresses
-3. Sets up `netsh interface portproxy` forwarding rules
-4. Adds Windows Firewall rules (optional)
-5. Cleans up everything on exit
-
-## Installation
-
-Install `wslink` with a single command in **PowerShell (Windows)**:
-
-```powershell
-irm https://raw.githubusercontent.com/memlinkdotdev/wslink/main/install.ps1 | iex
 ```
+Windows side:        wslink forward 4444           listens 0.0.0.0:4444
+                                                       │
+                                                       └─→ WSL distro IP:4444
+                                                          (auto-detected)
+
+WSL side:            wslink forward 4444           listens 0.0.0.0:4444
+                                                       │
+                                                       └─→ Windows host IP:4444
+                                                          (auto-detected from /etc/resolv.conf)
+```
+
+Direct TCP proxy — no `netsh`, no `iptables`, no admin, no leftover state. Press Ctrl-C and it's gone.
+
+## Install
+
+Grab a binary from the [latest release](https://github.com/memlinkdotdev/wslink/releases):
+
+| OS      | Arch    | Binary                                |
+| ------- | ------- | ------------------------------------- |
+| Windows | amd64   | `wslink-windows-amd64.zip`            |
+| Windows | arm64   | `wslink-windows-arm64.zip`            |
+| Linux   | amd64   | `wslink-linux-amd64.tar.gz`           |
+| Linux   | arm64   | `wslink-linux-arm64.tar.gz`           |
 
 ## Usage
 
-```cmd
-# Forward WSL port 4444 → Windows localhost:4444
+```bash
+# Auto-detect target
 wslink forward 4444
 
-# Forward with specific distro
-wslink forward 4444 --distro Ubuntu
+# From Windows: specify WSL distro
+wslink forward 4444 --wsl-name Ubuntu
 
-# Remove a forwarding rule
-wslink remove 4444
+# From WSL: specify Windows host IP
+wslink forward 4444 --windows-host 172.20.0.1
 
-# List active rules
-wslink list
+# Skip auto-detect: target host:port directly
+wslink forward 4444 --connect 192.168.1.5:4444
 
-# Install as background service
-wslink service install
+# Bind to specific address
+wslink forward 4444 --listen 127.0.0.1
+```
 
-# Remove service
-wslink service remove
+## Flags
+
+```
+wslink forward <port> [flags]
+
+  --connect <host:port>    Target directly (skip auto-detect)
+  --listen <addr>          Listen address (default 0.0.0.0)
+  --wsl-name <distro>      WSL distro name (Windows only)
+  --windows-host <ip>      Windows host IP (WSL only)
+```
+
+## Integration with memlink
+
+If you run `memlink` daemon inside WSL, run `wslink` on Windows to expose it:
+
+```bash
+# In WSL
+memlink serve --daemon          # daemon listens on 127.0.0.1:4444
+
+# In Windows PowerShell
+wslink forward 4444             # bridges Windows:4444 → WSL:4444
+```
+
+Now any Windows agent can hit `http://localhost:4444/mcp` to reach the memlink daemon in WSL.
+
+Or run memlink on Windows and bridge the other way:
+
+```powershell
+# In Windows PowerShell
+memlink serve --daemon          # daemon listens on 127.0.0.1:4444
+
+# In WSL
+wslink forward 4444             # bridges WSL:4444 → Windows:4444
 ```
 
 ## Requirements
 
-| Requirement | Details                                           |
-| ----------- | ------------------------------------------------- |
-| OS          | Windows 10/11 with WSL2                           |
-| Runtime     | Self-contained. No runtime needed.                |
-| Elevation   | Admin rights for `netsh` + firewall (prompts UAC) |
-
-## Integration
-
-If you use `memlink` (Universal Memory for AI Agents), you can use `wslink` alongside it to allow your Windows host agents to connect to the memory server running inside WSL:
-
-1. Start your `memlink` server inside WSL:
-   ```bash
-   memlink serve --daemon
-   ```
-2. Bridge the port to Windows using `wslink` in Windows PowerShell:
-   ```powershell
-   wslink forward 4444
-   ```
+| Requirement | Details                                  |
+| ----------- | ---------------------------------------- |
+| OS          | Windows 10/11 with WSL2, or WSL2/Linux   |
+| Runtime     | Static binary, no dependencies           |
+| Elevation   | None (raw TCP, no kernel hooks)          |
 
 ## Architecture
 
 ```
-wslink.exe (C#, Native AOT)
-  ├── WSL detection (wsl.exe --list --running)
-  ├── IP resolution (wsl.exe -d <distro> -- hostname -I)
-  ├── netsh portproxy management
-  ├── Windows Firewall management
-  └── Cleanup on exit / service mode
-
-No dependencies. Single file. ~1MB.
+wslink (Go, statically linked)
+  ├── Auto-detect target
+  │     Windows → wsl.exe --list + hostname -I
+  │     WSL     → /etc/resolv.conf nameserver
+  ├── TCP listener (net.Listen)
+  └── Per-connection goroutine
+        └─ io.Copy bidirectional proxy
 ```
+
+One goroutine per connection, two `io.Copy` goroutines for the bidirectional pipe. Releases are 1-2 MB statically linked binaries — no runtime, no CGO, no libc.

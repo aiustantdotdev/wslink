@@ -1,42 +1,42 @@
-name: CI
+name: ci
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    branches: [main, beta]
   pull_request:
-    branches: [main]
 
 jobs:
   build:
-    runs-on: windows-latest
-    permissions:
-      contents: write
+    name: build ${{ matrix.target.os }}-${{ matrix.target.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { os: linux,   arch: amd64 }
+          - { os: linux,   arch: arm64 }
+          - { os: windows, arch: amd64 }
+          - { os: windows, arch: arm64 }
+          - { os: darwin,  arch: amd64 }
+          - { os: darwin,  arch: arm64 }
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          dotnet-version: 9.0.x
+          go-version: "1.22"
 
-      - name: Build (Native AOT)
-        run: dotnet publish src/wslink.csproj -c Release
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wslink-win-x64
-          path: src/bin/Release/net9.0/win-x64/publish/wslink.exe
-
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Build
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-        run: |
-          gh release create $env:GITHUB_REF_NAME `
-            --repo $env:GITHUB_REPOSITORY `
-            --title $env:GITHUB_REF_NAME `
-            --notes "See https://github.com/memlinkdotdev/wslink/releases for release notes." `
-            src/bin/Release/net9.0/win-x64/publish/wslink.exe
+          GOOS:        ${{ matrix.target.os }}
+          GOARCH:      ${{ matrix.target.arch }}
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags="-s -w" -o /dev/null .
+
+      - name: Vet
+        env:
+          GOOS:        ${{ matrix.target.os }}
+          GOARCH:      ${{ matrix.target.arch }}
+        run: go vet ./...

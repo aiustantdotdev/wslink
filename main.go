@@ -1,0 +1,268 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"os"
+	"os/exec"
+	"os/signal"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+)
+
+const version = "0.1.0"
+
+func main() {
+	log.SetFlags(0)
+	log.SetPrefix("")
+
+	showVersion := flag.Bool("version", false, "Print version and exit")
+
+	var (
+		connect     string
+		listenAddr  string
+		wslName     string
+		windowsHost string
+	)
+
+	flag.StringVar(&connect, "connect", "", "Target host:port directly (skips auto-detect)")
+	flag.StringVar(&listenAddr, "listen", "0.0.0.0", "Address to listen on")
+	flag.StringVar(&wslName, "wsl-name", "", "WSL distro name (Windows only)")
+	flag.StringVar(&windowsHost, "windows-host", "", "Windows host IP (WSL only)")
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("wslink %s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
+		return
+	}
+
+	if flag.NArg() < 1 {
+		fmt.Println(`wslink — WSL ↔ Windows port bridge
+
+Usage:
+  wslink forward <port> [flags]
+
+Flags:
+  --connect <host:port>    Target directly (skip auto-detect)
+  --listen <addr>          Listen address (default 0.0.0.0)
+  --wsl-name <distro>      WSL distro name (Windows only)
+  --windows-host <ip>      Windows host IP (WSL only)
+  --version                Print version and exit
+
+Examples:
+  wslink forward 4444              # Auto-detect target
+  wslink forward 4444 --connect 192.168.1.5:4444
+  wslink forward 4444 --wsl-name Ubuntu
+  wslink forward 4444 --windows-host 172.20.0.1`)
+		return
+	}
+
+	portStr := flag.Arg(0)
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		log.Fatalf("Invalid port: %s", portStr)
+	}
+
+	var target string
+	if connect != "" {
+		target = connect
+	} else {
+		target = resolveTarget(port, wslName, windowsHost)
+	}
+
+	log.Printf("Forwarding %s:%d → %s", listenAddr, port, target)
+
+	startProxy(listenAddr, port, target)
+}
+
+	portStr := flag.Arg(0)
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		log.Fatalf("Invalid port: %s", portStr)
+	}
+
+	var target string
+	if connect != "" {
+		target = connect
+	} else {
+		target = resolveTarget(port, wslName, windowsHost)
+	}
+
+	log.Printf("Forwarding %s:%d → %s", listenAddr, port, target)
+
+	startProxy(listenAddr, port, target)
+}
+
+func resolveTarget(port int, wslName, windowsHost string) string {
+	if runtime.GOOS == "windows" {
+		return resolveWslTarget(port, wslName)
+	}
+	return resolveWindowsTarget(port, windowsHost)
+}
+
+func resolveWslTarget(port int, wslName string) string {
+	distros := listRunningWslDistros()
+	if len(distros) == 0 {
+		log.Fatal("No running WSL distros found. Start one with: wsl --distribution <name>")
+	}
+
+	var distro string
+	if wslName != "" {
+		found := false
+		for _, d := range distros {
+			if strings.EqualFold(d, wslName) {
+				distro = d
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Fatalf("WSL distro '%s' not found or not running. Available: %s", wslName, strings.Join(distros, ", "))
+		}
+	} else {
+		distro = distros[0]
+	}
+
+	ip := getWslIp(distro)
+	if ip == "" {
+		log.Fatalf("Could not resolve IP for WSL distro '%s'", distro)
+	}
+
+	log.Printf("Detected WSL distro: %s (%s)", distro, ip)
+	return fmt.Sprintf("%s:%d", ip, port)
+}
+
+func listRunningWslDistros() []string {
+	out, err := runCmd("wsl.exe", "--list", "--running", "--quiet")
+	if err != nil || out == "" {
+		return nil
+	}
+	var distros []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimRight(line, " \t\r\x00")
+		if line != "" {
+			distros = append(distros, line)
+		}
+	}
+	return distros
+}
+
+func getWslIp(distro string) string {
+	out, err := runCmd("wsl.exe", "-d", distro, "--", "hostname", "-I")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.Split(out, " ")[0])
+}
+
+func resolveWindowsTarget(port int, windowsHost string) string {
+	if windowsHost == "" {
+		windowsHost = detectWindowsHost()
+	}
+	if windowsHost == "" {
+		log.Fatal("Could not detect Windows host IP. Use --windows-host <ip>")
+	}
+	log.Printf("Detected Windows host: %s", windowsHost)
+	return fmt.Sprintf("%s:%d", windowsHost, port)
+}
+
+func detectWindowsHost() string {
+	// WSL2: Windows IP is the nameserver in /etc/resolv.conf
+	data, err := os.ReadFile("/etc/resolv.conf")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "nameserver ") {
+			ip := strings.TrimSpace(strings.TrimPrefix(line, "nameserver "))
+			if ip != "" {
+				return ip
+			}
+		}
+	}
+	return ""
+}
+
+func startProxy(listenAddr string, port int, target string) {
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, port))
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sig
+		log.Print("\nShutting down...")
+		ln.Close()
+	}()
+
+	var connID int64
+	var active sync.WaitGroup
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			break
+		}
+		connID++
+		id := connID
+
+		active.Add(1)
+		go func() {
+			defer active.Done()
+			handleConn(id, conn, target)
+		}()
+	}
+
+	active.Wait()
+	log.Print("Stopped")
+}
+
+func handleConn(id int64, src net.Conn, target string) {
+	defer src.Close()
+
+	dst, err := net.DialTimeout("tcp", target, 5*time.Second)
+	if err != nil {
+		log.Printf("[%d] connect failed: %v", id, err)
+		return
+	}
+	defer dst.Close()
+
+	log.Printf("[%d] open  %s ↔ %s", id, src.RemoteAddr(), target)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		io.Copy(dst, src)
+		dst.Close()
+		wg.Done()
+	}()
+	go func() {
+		io.Copy(src, dst)
+		src.Close()
+		wg.Done()
+	}()
+
+	wg.Wait()
+	log.Printf("[%d] close %s ↔ %s", id, src.RemoteAddr(), target)
+}
+
+func runCmd(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}

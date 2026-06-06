@@ -48,6 +48,7 @@ func main() {
 
 Usage:
   wslink forward <port> [flags]
+  wslink <port> [flags]              # "forward" is implicit
 
 Flags:
   --connect <host:port>    Target directly (skip auto-detect)
@@ -58,13 +59,20 @@ Flags:
 
 Examples:
   wslink forward 4444              # Auto-detect target
-  wslink forward 4444 --connect 192.168.1.5:4444
+  wslink 4444 --connect 192.168.1.5:4444
   wslink forward 4444 --wsl-name Ubuntu
   wslink forward 4444 --windows-host 172.20.0.1`)
 		return
 	}
 
-	portStr := flag.Arg(0)
+	portIdx := 0
+	if flag.Arg(0) == "forward" {
+		portIdx = 1
+	}
+	if flag.NArg() <= portIdx {
+		log.Fatal("Missing port. Usage: wslink forward <port>")
+	}
+	portStr := flag.Arg(portIdx)
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		log.Fatalf("Invalid port: %s", portStr)
